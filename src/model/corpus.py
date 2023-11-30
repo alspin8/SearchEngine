@@ -11,17 +11,28 @@ from src.model.document import Document, RedditDocument, ArxivDocument
 from src.utils import author_to_list
 
 
+def singleton(cls):
+    instances = {}
+
+    def wrapper(*args, **kwargs):
+        if cls not in instances:
+            instances[cls] = cls(*args, **kwargs)
+        return instances[cls]
+
+    return wrapper
+
+
+@singleton
 class Corpus:
-    def __init__(self, name, max_size=200):
-        self.name = name
+    def __init__(self):
+        self.name = None
         self.id2doc: dict[int, Document] = dict()
         self.authors: dict[str, Author] = dict()
         self.ndoc = 0
         self.naut = 0
 
-        self.__max_size = int(max_size / 2)
-        self.__file_path = os.path.join(config.DATA_FOLDER, f"{name}.csv")
-        print(os.path.join(config.DATA_FOLDER, f"{name}.csv"))
+        self.__max_size = None
+        self.__file_path = None
 
     def __reddit(self) -> list:
         r = praw.Reddit(client_id=config.REDDIT_CID, client_secret=config.REDDIT_SECRET, user_agent=config.REDDIT_AGENT)
@@ -37,16 +48,23 @@ class Corpus:
         df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in self.id2doc.values()])
         df.to_csv(self.__file_path, sep=config.CSV_SEP)
 
-    def load(self):
+    def load(self, name, max_size=200):
+        self.name = name
+        self.__max_size = int(max_size / 2)
+        self.__file_path = os.path.join(config.DATA_FOLDER, f"{name}.csv")
+
         if not os.path.isfile(self.__file_path):
             data_list = [*self.__reddit(), *self.__arxiv()]
             df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in data_list])
         else:
-            df = pd.read_csv(self.__file_path, sep=config.CSV_SEP, index_col=0, converters={"co_authors": author_to_list})
+            df = pd.read_csv(self.__file_path, sep=config.CSV_SEP, index_col=0,
+                             converters={"co_authors": author_to_list})
 
         df.index.name = "id"
 
-        self.id2doc = dict([(i, RedditDocument(**kwargs) if kwargs["type"] == "reddit" else ArxivDocument(**kwargs)) for i, kwargs in enumerate(df.to_dict(orient='records'))])
+        self.id2doc = dict(
+            [(i, RedditDocument(**kwargs) if kwargs["type"] == "reddit" else ArxivDocument(**kwargs)) for i, kwargs in
+             enumerate(df.to_dict(orient='records'))])
         self.authors = {}
         for doc in self.id2doc.values():
             if doc.author and doc.author not in self.authors:
