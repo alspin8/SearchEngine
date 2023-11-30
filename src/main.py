@@ -8,8 +8,8 @@ from src.model.corpus import Corpus
 if __name__ == '__main__':
     theme = 'football'
 
-    corpus = Corpus(theme, max_size=20)
-    corpus.load()
+    corpus = Corpus()
+    corpus.load(theme, max_size=20)
     corpus.save()
 
     print(corpus.naut, corpus.ndoc)
