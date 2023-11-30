@@ -21,6 +21,7 @@ class Corpus:
 
         self.__max_size = int(max_size / 2)
         self.__file_path = os.path.join(config.DATA_FOLDER, f"{name}.csv")
+        print(os.path.join(config.DATA_FOLDER, f"{name}.csv"))
 
     def __reddit(self) -> list:
         r = praw.Reddit(client_id=config.REDDIT_CID, client_secret=config.REDDIT_SECRET, user_agent=config.REDDIT_AGENT)

@@ -1,6 +1,8 @@
-import sys
+from sys import platform, path
 
-sys.path.append("./")
+
+if platform == "win32":
+    path.append("./")
 
 from src.model.corpus import Corpus
 
