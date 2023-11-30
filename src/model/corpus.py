@@ -7,7 +7,7 @@ import praw
 import xmltodict
 from src import config
 from src.model.author import Author
-from src.model.document import Document
+from src.model.document import Document, RedditDocument, ArxivDocument
 from src.utils import author_to_list
 
 
@@ -33,25 +33,31 @@ class Corpus:
         return list(map(Document.from_arxiv, xmltodict.parse(xml.read().decode('utf-8'))["feed"]["entry"]))
 
     def save(self):
-        df = pd.DataFrame([data.__dict__ for data in self.id2doc.values()])
+        df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in self.id2doc.values()])
         df.to_csv(self.__file_path, sep=config.CSV_SEP)
 
     def load(self):
         if not os.path.isfile(self.__file_path):
             data_list = [*self.__reddit(), *self.__arxiv()]
-            df = pd.DataFrame([data.__dict__ for data in data_list])
+            df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in data_list])
         else:
-            df = pd.read_csv(self.__file_path, sep=config.CSV_SEP, index_col=0, converters={"author": author_to_list})
+            df = pd.read_csv(self.__file_path, sep=config.CSV_SEP, index_col=0, converters={"co_authors": author_to_list})
 
         df.index.name = "id"
 
-        self.id2doc = dict([(i, Document(**kwargs)) for i, kwargs in enumerate(df.to_dict(orient='records'))])
+        self.id2doc = dict([(i, RedditDocument(**kwargs) if kwargs["type"] == "reddit" else ArxivDocument(**kwargs)) for i, kwargs in enumerate(df.to_dict(orient='records'))])
         self.authors = {}
         for doc in self.id2doc.values():
-            for author in doc.author:
-                if author not in self.authors:
-                    self.authors[author] = Author(name=author)
-                self.authors[author].add(doc)
+            if doc.author and doc.author not in self.authors:
+                self.authors[doc.author] = Author(name=doc.author)
+            self.authors[doc.author].add(doc)
+
+            if doc.get_type() == "arxiv":
+                for author in doc.co_authors:
+                    if author not in self.authors:
+                        self.authors[author] = Author(name=author)
+                    self.authors[author].add(doc)
+
         self.ndoc = len(self.id2doc)
         self.naut = len(self.authors)
 

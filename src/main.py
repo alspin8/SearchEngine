@@ -1,6 +1,17 @@
-import td3
-from src import td4
+import sys
+
+sys.path.append("./")
+
+from src.model.corpus import Corpus
 
 if __name__ == '__main__':
-    # td3.main()
-    td4.main()
+    theme = 'football'
+
+    corpus = Corpus(theme, max_size=20)
+    corpus.load()
+    corpus.save()
+
+    print(corpus.naut, corpus.ndoc)
+    corpus.show_sorted_by_title()
+    print("\n\n")
+    corpus.show_sorted_by_date()
