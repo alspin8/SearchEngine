@@ -13,7 +13,7 @@ class Document:
         self.text = clean_string(kwargs["text"]) or default
 
     def __str__(self):
-        return f"Document({self.title})"
+        return f"Document({self.title}, {self.get_type()})"
 
     def __repr__(self) -> str:
         return f"Document(title={self.title}, author={self.author}, date={self.date}, url={self.url}, text={self.text})"

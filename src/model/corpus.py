@@ -1,7 +1,10 @@
+import json
 import os
+import random
 import urllib
 import urllib.request
 
+import numpy as np
 import pandas as pd
 import praw
 import xmltodict
@@ -55,16 +58,21 @@ class Corpus:
 
         if not os.path.isfile(self.__file_path):
             data_list = [*self.__reddit(), *self.__arxiv()]
+            random.shuffle(data_list)
             df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in data_list])
         else:
-            df = pd.read_csv(self.__file_path, sep=config.CSV_SEP, index_col=0,
-                             converters={"co_authors": author_to_list})
+            df = pd.read_csv(self.__file_path, sep=config.CSV_SEP, index_col=0, converters={"co_authors": author_to_list})
+            if len(df) < max_size:
+                data_list = [*self.__reddit(), *self.__arxiv()]
+                random.shuffle(data_list)
+                df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in data_list])
+            else:
+                df = df.iloc[0:max_size, :]
 
         df.index.name = "id"
 
         self.id2doc = dict(
-            [(i, RedditDocument(**kwargs) if kwargs["type"] == "reddit" else ArxivDocument(**kwargs)) for i, kwargs in
-             enumerate(df.to_dict(orient='records'))])
+            [(i, RedditDocument(**kwargs) if kwargs["type"] == "reddit" else ArxivDocument(**kwargs)) for i, kwargs in enumerate(df.to_dict(orient='records'))])
         self.authors = {}
         for doc in self.id2doc.values():
             if doc.author and doc.author not in self.authors:
@@ -80,8 +88,10 @@ class Corpus:
         self.ndoc = len(self.id2doc)
         self.naut = len(self.authors)
 
-    def show_sorted_by_title(self, limit=10):
-        print(*sorted(self.id2doc.values(), key=lambda x: x.title)[:limit], sep="\n")
-
-    def show_sorted_by_date(self, limit=10):
-        print(*sorted(self.id2doc.values(), key=lambda x: x.date)[:limit], sep="\n")
+    def get(self, sort="none"):
+        if sort == "title":
+            return sorted(self.id2doc.values(), key=lambda x: x.title)
+        if sort == "data":
+            return sorted(self.id2doc.values(), key=lambda x: x.date)
+        else:
+            return self.id2doc.values()
