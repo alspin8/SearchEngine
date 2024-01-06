@@ -23,7 +23,7 @@ class Document:
 
     @staticmethod
     def from_reddit(post):
-        return RedditDocument(title=post.title, author=post.author_flair_text if post.author_flair_text else [], date=datetime.utcfromtimestamp(post.created_utc), url=post.url, text=post.selftext, comment_count=post.comments)
+        return RedditDocument(title=post.title, author=post.author_flair_text if post.author_flair_text else [], date=datetime.utcfromtimestamp(post.created_utc), url=post.url, text=post.selftext, comment_count=post.comments, fullname=post.name)
 
     @staticmethod
     def from_arxiv(post):
@@ -33,14 +33,16 @@ class Document:
         url = post["id"] if "id" in post else None
         text = post["summary"] if "summary" in post else None
         co_authors = list(map(lambda aut: aut["name"], post["author"][1:])) if type(post["author"]) is list else []
-        return ArxivDocument(title=title, author=author, date=date, url=url, text=text, co_authors=co_authors)
+        api_index = post["api_index"] if "api_index" in post else 0
+        return ArxivDocument(title=title, author=author, date=date, url=url, text=text, co_authors=co_authors, api_index=api_index)
 
 
 class RedditDocument(Document):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.comment_count = kwargs["comment_count"] or 0
+        self.comment_count = kwargs["comment_count"] if "comment_count" in kwargs else 0
+        self.fullname = kwargs["fullname"] if "fullname" in kwargs else ""
 
     def get_type(self):
         return "reddit"
@@ -50,7 +52,8 @@ class ArxivDocument(Document):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.co_authors = kwargs["co_authors"]
+        self.co_authors = kwargs["co_authors"] if "co_authors" in kwargs else []
+        self.api_index = kwargs["api_index"] if "api_index" in kwargs else 0
 
     def get_type(self):
         return "arxiv"

@@ -32,44 +32,83 @@ class Corpus:
         self.ndoc = 0
         self.naut = 0
         self.is_save = False
+        self.is_loaded = False
 
-        self.__max_size = None
         self.__file_path = None
 
-    def __reddit(self) -> list:
+    def __reddit(self, count, offset="") -> list:
         r = praw.Reddit(client_id=config.REDDIT_CID, client_secret=config.REDDIT_SECRET, user_agent=config.REDDIT_AGENT, check_for_async=False)
-        hot_posts = r.subreddit(self.name).hot(limit=self.__max_size)
-        return list(map(Document.from_reddit, hot_posts))
 
-    def __arxiv(self) -> list:
-        url = f'http://export.arxiv.org/api/query?search_query=all:{self.name}&start=0&max_results={self.__max_size}'
-        xml = urllib.request.urlopen(url)
-        return list(map(Document.from_arxiv, xmltodict.parse(xml.read().decode('utf-8'))["feed"]["entry"]))
+        posts = []
+        to_query = count
+        cursor = offset
+        while len(posts) < count:
+            hot_posts = r.subreddit(self.name).hot(limit=to_query, params={"after": cursor})
+
+            to_query = 0
+            for post in hot_posts:
+                if len(post.title) < 20:
+                    to_query += 1
+                else:
+                    posts.append(post)
+                cursor = post.name
+
+        return list(map(Document.from_reddit, posts))
+
+    def __arxiv(self, count, offset=0) -> list:
+        posts = []
+        to_query = count
+        cursor = int(offset)
+        while len(posts) < count:
+
+            url = f'http://export.arxiv.org/api/query?search_query=all:{self.name}&start={cursor}&max_results={to_query}'
+            xml = urllib.request.urlopen(url)
+            lst = xmltodict.parse(xml.read().decode('utf-8'))["feed"]["entry"]
+
+            if type(lst) is not list:
+                lst = [lst]
+
+            to_query = 0
+            next_cursor = 0
+            for i in range(len(lst)):
+                if len(lst[i]["title"]) < 20:
+                    to_query += 1
+                else:
+                    posts.append(lst[i] | dict(api_index=cursor + i))
+                next_cursor = cursor + i
+
+            cursor = next_cursor + 1
+
+        return list(map(Document.from_arxiv, posts))
 
     def save(self):
         df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in self.id2doc.values()])
         df.to_csv(self.__file_path, sep=config.CSV_SEP)
         self.is_save = True
 
-    def load(self, name, max_size=200):
+    def load(self, name, count=200):
         self.name = name
-        self.__max_size = int(max_size / 2)
         self.__file_path = os.path.join(config.DATA_FOLDER, f"{name}.csv")
 
         if not os.path.isfile(self.__file_path):
-            data_list = [*self.__reddit(), *self.__arxiv()]
-            random.shuffle(data_list)
+            self.is_save = False
+            data_list = [*self.__reddit(count // 2), *self.__arxiv(count // 2)]
             df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in data_list])
         else:
             self.is_save = True
             df = pd.read_csv(self.__file_path, sep=config.CSV_SEP, index_col=0, converters={"co_authors": author_to_list})
-            if len(df) < max_size:
+            if len(df) < count:
                 self.is_save = False
-                data_list = [*self.__reddit(), *self.__arxiv()]
-                random.shuffle(data_list)
-                df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in data_list])
+                fetch_count = (count - len(df)) // 2
+                data_list = [
+                    *self.__reddit(fetch_count, offset=df.loc[df.type == "reddit", :].tail(1).iloc[0].fullname),
+                    *self.__arxiv (fetch_count, offset=df.loc[(df.type == "arxiv") & (df.api_index == df.api_index.max()), :].tail(1).iloc[0].api_index)
+                ]
+                df2 = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in data_list])
+                df = pd.concat([df, df2], ignore_index=True)
             else:
-                df = df.iloc[0:max_size, :]
+                df = df.sample(frac=1)
+                df = df.iloc[0:count, :]
 
         df.index.name = "id"
 
@@ -90,10 +129,16 @@ class Corpus:
         self.ndoc = len(self.id2doc)
         self.naut = len(self.authors)
 
+        self.is_loaded = True
+
     def get(self, sort="none"):
         if sort == "title":
             return sorted(self.id2doc.values(), key=lambda x: x.title)
         if sort == "date":
             return sorted(self.id2doc.values(), key=lambda x: x.date)
         else:
-            return self.id2doc.values()
+            return list(self.id2doc.values())
+
+    def __len__(self):
+        print(self.ndoc)
+        return self.ndoc
