@@ -1,5 +1,4 @@
 import os
-import random
 import urllib
 import urllib.request
 
@@ -9,7 +8,8 @@ import xmltodict
 from src import config
 from src.model.author import Author
 from src.model.document import Document, RedditDocument, ArxivDocument
-from src.utils import author_to_list
+
+author_to_list = lambda x: x.strip("[]").replace("'", "").split(", ") if x != '[]' else []
 
 
 def singleton(cls):
@@ -27,8 +27,8 @@ def singleton(cls):
 class Corpus:
     def __init__(self):
         self.name = None
-        self.id2doc: dict[int, Document] = dict()
-        self.authors: dict[str, Author] = dict()
+        self.id2doc = dict()
+        self.authors = dict()
         self.ndoc = 0
         self.naut = 0
         self.is_save = False
@@ -36,7 +36,7 @@ class Corpus:
 
         self.__file_path = None
 
-    def __reddit(self, count, offset="") -> list:
+    def __reddit(self, count, offset=""):
         r = praw.Reddit(client_id=config.REDDIT_CID, client_secret=config.REDDIT_SECRET, user_agent=config.REDDIT_AGENT, check_for_async=False)
 
         posts = []
@@ -55,7 +55,7 @@ class Corpus:
 
         return list(map(Document.from_reddit, posts))
 
-    def __arxiv(self, count, offset=0) -> list:
+    def __arxiv(self, count, offset=0):
         posts = []
         to_query = count
         cursor = int(offset)
@@ -93,7 +93,7 @@ class Corpus:
         if not os.path.isfile(self.__file_path):
             self.is_save = False
             data_list = [*self.__reddit(count // 2), *self.__arxiv(count // 2)]
-            df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in data_list])
+            self.id2doc = dict([(i, doc) for i, doc in enumerate(data_list)])
         else:
             self.is_save = True
             df = pd.read_csv(self.__file_path, sep=config.CSV_SEP, index_col=0, converters={"co_authors": author_to_list})
@@ -110,10 +110,9 @@ class Corpus:
                 df = df.sample(frac=1)
                 df = df.iloc[0:count, :]
 
-        df.index.name = "id"
+            df.index.name = "id"
+            self.id2doc = dict([(i, RedditDocument(**kwargs) if kwargs["type"] == "reddit" else ArxivDocument(**kwargs)) for i, kwargs in enumerate(df.to_dict(orient='records'))])
 
-        self.id2doc = dict(
-            [(i, RedditDocument(**kwargs) if kwargs["type"] == "reddit" else ArxivDocument(**kwargs)) for i, kwargs in enumerate(df.to_dict(orient='records'))])
         self.authors = {}
         for doc in self.id2doc.values():
             if doc.author and doc.author not in self.authors:
@@ -131,7 +130,7 @@ class Corpus:
 
         self.is_loaded = True
 
-    def get(self, sort="none"):
+    def get_documents(self, sort=""):
         if sort == "title":
             return sorted(self.id2doc.values(), key=lambda x: x.title)
         if sort == "date":
@@ -139,6 +138,19 @@ class Corpus:
         else:
             return list(self.id2doc.values())
 
+    def get_authors(self, sort=""):
+        if sort == "name":
+            return sorted(self.authors.values(), key=lambda x: x.name)
+        elif sort == "document_count":
+            return sorted(self.authors.values(), key=lambda x: x.ndoc)
+        else:
+            return list(self.authors.values())
+
     def __len__(self):
-        print(self.ndoc)
         return self.ndoc
+
+    def __str__(self):
+        return f"Corpus({self.name}, documents={self.ndoc}, authors={self.naut})"
+
+    def __repr__(self):
+        return self.__str__()
