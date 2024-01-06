@@ -1,3 +1,4 @@
+import os
 from sys import platform
 
 REDDIT_SECRET = "qj8ZzIfpLH8wMcN99i0GfBG-K2gFUQ"

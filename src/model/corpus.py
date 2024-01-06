@@ -1,10 +1,8 @@
-import json
 import os
 import random
 import urllib
 import urllib.request
 
-import numpy as np
 import pandas as pd
 import praw
 import xmltodict
@@ -33,12 +31,13 @@ class Corpus:
         self.authors: dict[str, Author] = dict()
         self.ndoc = 0
         self.naut = 0
+        self.is_save = False
 
         self.__max_size = None
         self.__file_path = None
 
     def __reddit(self) -> list:
-        r = praw.Reddit(client_id=config.REDDIT_CID, client_secret=config.REDDIT_SECRET, user_agent=config.REDDIT_AGENT)
+        r = praw.Reddit(client_id=config.REDDIT_CID, client_secret=config.REDDIT_SECRET, user_agent=config.REDDIT_AGENT, check_for_async=False)
         hot_posts = r.subreddit(self.name).hot(limit=self.__max_size)
         return list(map(Document.from_reddit, hot_posts))
 
@@ -50,6 +49,7 @@ class Corpus:
     def save(self):
         df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in self.id2doc.values()])
         df.to_csv(self.__file_path, sep=config.CSV_SEP)
+        self.is_save = True
 
     def load(self, name, max_size=200):
         self.name = name
@@ -61,8 +61,10 @@ class Corpus:
             random.shuffle(data_list)
             df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in data_list])
         else:
+            self.is_save = True
             df = pd.read_csv(self.__file_path, sep=config.CSV_SEP, index_col=0, converters={"co_authors": author_to_list})
             if len(df) < max_size:
+                self.is_save = False
                 data_list = [*self.__reddit(), *self.__arxiv()]
                 random.shuffle(data_list)
                 df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in data_list])
@@ -91,7 +93,7 @@ class Corpus:
     def get(self, sort="none"):
         if sort == "title":
             return sorted(self.id2doc.values(), key=lambda x: x.title)
-        if sort == "data":
+        if sort == "date":
             return sorted(self.id2doc.values(), key=lambda x: x.date)
         else:
             return self.id2doc.values()

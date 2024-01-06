@@ -12,7 +12,7 @@ if __name__ == '__main__':
     corpus.load(theme, max_size=20)
     corpus.save()
 
-    # print(corpus.naut, corpus.ndoc)
-    # corpus.show_sorted_by_title()
-    # print("\n\n")
-    # corpus.show_sorted_by_date()
+    v = "\n".join(str(item) for item in corpus.get(sort="date"))
+
+    print(v)
+
