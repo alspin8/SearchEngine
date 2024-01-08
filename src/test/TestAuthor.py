@@ -3,7 +3,7 @@ from unittest import TestCase, main
 from sys import platform, path
 
 if platform == "win32":
-    path.append("../")
+    path.append("./")
 
 from src.model.author import Author
 from src.model.document import Document

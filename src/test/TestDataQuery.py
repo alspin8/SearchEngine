@@ -2,7 +2,7 @@ from sys import path, platform
 from unittest import TestCase, main
 
 if platform == "win32":
-    path.append("../")
+    path.append("./")
 
 from src.utility.data_query import DataQuery
 

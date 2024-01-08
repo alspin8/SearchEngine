@@ -4,7 +4,7 @@ from unittest import TestCase, main
 from sys import platform, path
 
 if platform == "win32":
-    path.append("../")
+    path.append("./")
 
 from src.model.corpus import Corpus
 from src.utility import config

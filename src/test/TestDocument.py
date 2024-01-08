@@ -4,7 +4,7 @@ from unittest import TestCase, main
 from sys import platform, path
 
 if platform == "win32":
-    path.append("../")
+    path.append("./")
 
 from src.model.document import Document, RedditDocument, ArxivDocument
 from src.utility.data_query import DataQuery
