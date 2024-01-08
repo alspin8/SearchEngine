@@ -1,10 +1,10 @@
 import os
 import pandas as pd
-from src import config
-from src.data_fetch import DataQuery
+from src.utility import config
+from src.utility.data_query import DataQuery
 from src.model.author import Author
 from src.model.document import Document, RedditDocument, ArxivDocument
-from src.utils import singleton
+from src.utility.utils import singleton
 
 author_to_list = lambda x: x.strip("[]").replace("'", "").split(", ") if x != '[]' else []
 
@@ -73,7 +73,7 @@ class Corpus:
         :type count: int
         """
         self.name = name
-        self.file_path = os.path.join(config.DATA_FOLDER, f"{name}.csv")
+        self.file_path = config.DATA_FOLDER.joinpath(f"{name}.csv")
 
         if not os.path.isfile(self.file_path):
             self.saved = False
@@ -97,7 +97,7 @@ class Corpus:
             df.index.name = "id"
             self.id2doc = dict([(i, RedditDocument(**kwargs) if kwargs["type"] == "reddit" else ArxivDocument(**kwargs)) for i, kwargs in enumerate(df.to_dict(orient='records'))])
 
-        self.authors = Author.dict_from_documents(self.id2doc.values())
+        self.authors = Author.dict_from_documents(list(self.id2doc.values()))
 
         self.ndoc = len(self.id2doc)
         self.naut = len(self.authors)

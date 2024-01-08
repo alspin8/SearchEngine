@@ -1,4 +1,4 @@
-from document import Document
+from src.model.document import Document
 
 
 class Author:
@@ -66,8 +66,8 @@ class Author:
         :type index: int
         :return: the document
         :rtype: Document
+        :raise IndexError
         """
-        assert index >= len(self.production)
         return self.production[index]
 
     def get_documents(self):

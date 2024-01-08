@@ -1,7 +1,8 @@
+import sys
 import urllib
 import praw
 import xmltodict
-from src import config
+from src.utility import config
 from src.model.document import Document, RedditDocument, ArxivDocument
 
 
@@ -60,18 +61,23 @@ class DataQuery:
         :param count: the amount of document to query
         :type count: int
         :param offset: the document index to start the query
-        :type offset: str
+        :type offset: int
         :return: a list of document
         :rtype: list[ArxivDocument]
         """
         posts = []
         to_query = count
-        cursor = int(offset)
+        cursor = int(offset) + 1
         while len(posts) < count:
 
+            lst = []
             url = f'{cls.ARXIV_API_URL}?search_query=all:{theme}&start={cursor}&max_results={to_query}'
-            xml = urllib.request.urlopen(url)
-            lst = xmltodict.parse(xml.read().decode('utf-8'))["feed"]["entry"]
+            try:
+                xml = urllib.request.urlopen(url)
+                lst = xmltodict.parse(xml.read().decode('utf-8'))["feed"]["entry"]
+            except urllib.error.HTTPError:
+                print(f"Could not query arxiv with {theme} keyword", file=sys.stderr)
+                return []
 
             if type(lst) is not list:
                 lst = [lst]
@@ -100,9 +106,17 @@ class DataQuery:
         :param r_off: the document name to start the query for reddit
         :type r_off: str
         :param a_off: the document index to start the query for arxiv
-        :type a_off: str
+        :type a_off: int
         :return: a list of document
         :rtype: list[RedditDocument | ArxivDocument]
         """
         assert count % 2 == 0
-        return [*cls.reddit(theme, count // 2, r_off), *cls.arxiv(theme, count // 2, a_off)]
+
+        arxiv_doc = cls.arxiv(theme, count // 2, a_off)
+        if len(arxiv_doc) > 0:
+            reddit_doc = cls.reddit(theme, count // 2, r_off)
+        else:
+            reddit_doc = cls.reddit(theme, count, r_off)
+            print(f"Due to a problem with the api arxiv, the corpus size has been compensated by reddit documents")
+
+        return [*reddit_doc, *arxiv_doc]

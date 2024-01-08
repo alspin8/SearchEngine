@@ -10,8 +10,8 @@ if platform == "win32":
 from src.model.corpus import Corpus
 
 if __name__ == '__main__':
-    theme = 'iphone'
-    count = 30
+    theme = 'test'
+    count = 20
 
     corpus = Corpus()
     corpus.load(theme, count)
