@@ -44,7 +44,7 @@ class DataQuery:
 
             to_query = 0
             for post in hot_posts:
-                if len(post.title) < 20:
+                if len(post.selftext) < 100:
                     to_query += 1
                 else:
                     posts.append(post)
@@ -85,7 +85,7 @@ class DataQuery:
             to_query = 0
             next_cursor = 0
             for i in range(len(lst)):
-                if len(lst[i]["title"]) < 20:
+                if len(lst[i]["summary"]) < 100:
                     to_query += 1
                 else:
                     posts.append(lst[i] | dict(api_index=cursor + i))

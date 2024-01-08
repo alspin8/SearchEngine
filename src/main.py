@@ -10,7 +10,7 @@ if platform == "win32":
 from src.model.corpus import Corpus
 
 if __name__ == '__main__':
-    theme = 'test'
+    theme = 'physics'
     count = 20
 
     corpus = Corpus()
