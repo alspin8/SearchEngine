@@ -1,4 +1,6 @@
 import os
+import re
+
 import pandas as pd
 from src.utility import config
 from src.utility.data_query import DataQuery
@@ -7,6 +9,12 @@ from src.model.document import Document, RedditDocument, ArxivDocument
 from src.utility.utils import singleton
 
 author_to_list = lambda x: x.strip("[]").replace("'", "").split(", ") if x != '[]' else []
+
+
+def clean_text(string):
+    pattern = r'[^a-zA-Z\s]'
+    res = re.sub(pattern, '', string.lower())
+    return res
 
 
 @singleton
@@ -54,6 +62,7 @@ class Corpus:
     is_same(name, document_count)
         Return if corpus match with name and document_count
     """
+
     def __init__(self):
         self.name = None
         self.id2doc = dict()
@@ -63,6 +72,7 @@ class Corpus:
         self.saved = False
         self.loaded = False
         self.file_path = None
+        self.unique_chain = ""
 
     def load(self, name, count):
         """
@@ -95,12 +105,16 @@ class Corpus:
                 df = df.iloc[0:count, :]
 
             df.index.name = "id"
-            self.id2doc = dict([(i, RedditDocument(**kwargs) if kwargs["type"] == "reddit" else ArxivDocument(**kwargs)) for i, kwargs in enumerate(df.to_dict(orient='records'))])
+            self.id2doc = dict(
+                [(i, RedditDocument(**kwargs) if kwargs["type"] == "reddit" else ArxivDocument(**kwargs)) for i, kwargs
+                 in enumerate(df.to_dict(orient='records'))])
 
         self.authors = Author.dict_from_documents(list(self.id2doc.values()))
 
         self.ndoc = len(self.id2doc)
         self.naut = len(self.authors)
+
+        self.unique_chain = " ".join(map(Document.get_text, self.id2doc.values()))
 
         self.loaded = True
 
@@ -193,6 +207,32 @@ class Corpus:
         :rtype: bool
         """
         return self.name == name and self.ndoc == document_count
+
+    def concorde(self, keyword, context_size):
+        regex = r"(\w+)\W+" * context_size + f"({keyword})" + r"\W+(\w+)" * context_size
+        matches = re.findall(regex, self.unique_chain.lower())
+
+        list_of_dict = [dict(left=" ".join(match[0:context_size]), pattern=match[context_size], right=" ".join(match[context_size + 1:])) for match in matches]
+
+        return pd.DataFrame(list_of_dict)
+
+    def search(self, keyword):
+        return self.concorde(keyword, 2)[['left', 'pattern', 'right']].apply(lambda row: ' '.join(row.values.astype(str)), axis=1).tolist()
+
+    def stats(self, word_freq_count):
+        filter_pattern = r'\s+'
+
+        words = re.split(filter_pattern, clean_text(self.unique_chain))
+
+        df = pd.DataFrame(words).value_counts().to_frame("freq").reset_index(names=["word"])
+        df.insert(2, "document_freq", 0)
+
+        for document in self.id2doc.values():
+            unique_words = set(re.split(filter_pattern, clean_text(document.get_text())))
+            df.loc[df.word.isin(list(unique_words)), "document_freq"] += 1
+
+        print(f"Number of words: {len(df)}\n")
+        print(df.loc[0:word_freq_count, "word"])
 
     def __str__(self):
         return f"Corpus({self.name}, documents={self.ndoc}, authors={self.naut})"
