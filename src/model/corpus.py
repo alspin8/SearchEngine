@@ -1,109 +1,93 @@
 import os
-import urllib
-import urllib.request
-
 import pandas as pd
-import praw
-import xmltodict
 from src import config
+from src.data_fetch import DataQuery
 from src.model.author import Author
 from src.model.document import Document, RedditDocument, ArxivDocument
+from src.utils import singleton
 
 author_to_list = lambda x: x.strip("[]").replace("'", "").split(", ") if x != '[]' else []
 
 
-def singleton(cls):
-    instances = {}
-
-    def wrapper(*args, **kwargs):
-        if cls not in instances:
-            instances[cls] = cls(*args, **kwargs)
-        return instances[cls]
-
-    return wrapper
-
-
 @singleton
 class Corpus:
+    """
+    A class used to represent a Corpus
+
+    Attributes
+    ----------
+    name : str
+        the name of the corpus (fetch keyword)
+    id2doc : dict[int, Document]
+        the document contained into the corpus
+    authors: dict[int, Author]
+        the authors of documents
+    ndoc : int
+        the number of document in the corpus
+    naut : int
+        the number of authors of documents
+    saved : bool
+        the save status of the corpus
+    loaded : bool
+        the load status of the corpus
+
+    Methods
+    -------
+    load(name, count)
+        Load corpus with data depend on name and count
+    save()
+        Save the current corpus to a csv (<corpus name>.csv)
+    get_name()
+        Return the name of corpus
+    get_document_count()
+        Return the number of document in the corpus
+    get_author_count()
+        Return the number of author in the corpus
+    is_loaded()
+        Return if corpus is loaded
+    is_saved()
+        Return if the corpus is saved
+    get_documents(sort="")
+        Return sorted list of document
+    get_authors(sort="")
+        Return sorted list of author
+    is_same(name, document_count)
+        Return if corpus match with name and document_count
+    """
     def __init__(self):
         self.name = None
         self.id2doc = dict()
         self.authors = dict()
         self.ndoc = 0
         self.naut = 0
-        self.is_save = False
-        self.is_loaded = False
+        self.saved = False
+        self.loaded = False
+        self.file_path = None
 
-        self.__file_path = None
-
-    def __reddit(self, count, offset=""):
-        r = praw.Reddit(client_id=config.REDDIT_CID, client_secret=config.REDDIT_SECRET, user_agent=config.REDDIT_AGENT, check_for_async=False)
-
-        posts = []
-        to_query = count
-        cursor = offset
-        while len(posts) < count:
-            hot_posts = r.subreddit(self.name).hot(limit=to_query, params={"after": cursor})
-
-            to_query = 0
-            for post in hot_posts:
-                if len(post.title) < 20:
-                    to_query += 1
-                else:
-                    posts.append(post)
-                cursor = post.name
-
-        return list(map(Document.from_reddit, posts))
-
-    def __arxiv(self, count, offset=0):
-        posts = []
-        to_query = count
-        cursor = int(offset)
-        while len(posts) < count:
-
-            url = f'http://export.arxiv.org/api/query?search_query=all:{self.name}&start={cursor}&max_results={to_query}'
-            xml = urllib.request.urlopen(url)
-            lst = xmltodict.parse(xml.read().decode('utf-8'))["feed"]["entry"]
-
-            if type(lst) is not list:
-                lst = [lst]
-
-            to_query = 0
-            next_cursor = 0
-            for i in range(len(lst)):
-                if len(lst[i]["title"]) < 20:
-                    to_query += 1
-                else:
-                    posts.append(lst[i] | dict(api_index=cursor + i))
-                next_cursor = cursor + i
-
-            cursor = next_cursor + 1
-
-        return list(map(Document.from_arxiv, posts))
-
-    def save(self):
-        df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in self.id2doc.values()])
-        df.to_csv(self.__file_path, sep=config.CSV_SEP)
-        self.is_save = True
-
-    def load(self, name, count=200):
+    def load(self, name, count):
+        """
+        Load corpus with data depend on name and count
+        :param name: The keyword to search
+        :type name: str
+        :param count: The amount of document to retrieve
+        :type count: int
+        """
         self.name = name
-        self.__file_path = os.path.join(config.DATA_FOLDER, f"{name}.csv")
+        self.file_path = os.path.join(config.DATA_FOLDER, f"{name}.csv")
 
-        if not os.path.isfile(self.__file_path):
-            self.is_save = False
-            data_list = [*self.__reddit(count // 2), *self.__arxiv(count // 2)]
+        if not os.path.isfile(self.file_path):
+            self.saved = False
+            data_list = DataQuery().all(self.name, count)
             self.id2doc = dict([(i, doc) for i, doc in enumerate(data_list)])
         else:
-            self.is_save = True
-            df = pd.read_csv(self.__file_path, sep=config.CSV_SEP, index_col=0, converters={"co_authors": author_to_list})
+            self.saved = True
+            df = pd.read_csv(self.file_path, sep=config.CSV_SEP, index_col=0, converters={"co_authors": author_to_list})
             if len(df) < count:
-                self.is_save = False
-                fetch_count = (count - len(df)) // 2
-                data_list = [
-                    *self.__reddit(fetch_count, offset=df.loc[df.type == "reddit", :].tail(1).iloc[0].fullname),
-                    *self.__arxiv (fetch_count, offset=df.loc[(df.type == "arxiv") & (df.api_index == df.api_index.max()), :].tail(1).iloc[0].api_index)
-                ]
+                self.saved = False
+                r_off = df.loc[df.type == "reddit", :].tail(1).iloc[0].fullname
+                a_off = df.loc[(df.type == "arxiv") & (df.api_index == df.api_index.max()), :].tail(1).iloc[0].api_index
+                data_list = DataQuery().all(self.name, count - len(df), r_off, a_off)
+
                 df2 = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in data_list])
                 df = pd.concat([df, df2], ignore_index=True)
             else:
@@ -113,41 +97,102 @@ class Corpus:
             df.index.name = "id"
             self.id2doc = dict([(i, RedditDocument(**kwargs) if kwargs["type"] == "reddit" else ArxivDocument(**kwargs)) for i, kwargs in enumerate(df.to_dict(orient='records'))])
 
-        self.authors = {}
-        for doc in self.id2doc.values():
-            if doc.author and doc.author not in self.authors:
-                self.authors[doc.author] = Author(name=doc.author)
-            self.authors[doc.author].add(doc)
-
-            if doc.get_type() == "arxiv":
-                for author in doc.co_authors:
-                    if author not in self.authors:
-                        self.authors[author] = Author(name=author)
-                    self.authors[author].add(doc)
+        self.authors = Author.dict_from_documents(self.id2doc.values())
 
         self.ndoc = len(self.id2doc)
         self.naut = len(self.authors)
 
-        self.is_loaded = True
+        self.loaded = True
+
+    def save(self):
+        """
+        Save the current corpus to a csv (<corpus name>.csv)
+        """
+        df = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in self.id2doc.values()])
+        df.to_csv(self.file_path, sep=config.CSV_SEP)
+        self.saved = True
+
+    def get_name(self):
+        """
+        Return the name of corpus
+        :return: name of the corpus
+        :rtype: str
+        """
+        return self.name
+
+    def get_document_count(self):
+        """
+        Return the number of document in the corpus
+        :return: the number of document in the corpus
+        :rtype: int
+        """
+        return self.ndoc
+
+    def get_author_count(self):
+        """
+        Return the number of author in the corpus
+        :return: the number of author in the corpus
+        :rtype: int
+        """
+        return self.naut
+
+    def is_loaded(self):
+        """
+        Return if corpus is loaded
+        :return: True if corpus is loaded
+        :rtype: bool
+        """
+        return self.loaded
+
+    def is_saved(self):
+        """
+        Return if corpus is saved
+        :return: True if corpus is saved
+        :rtype: bool
+        """
+        return self.saved
 
     def get_documents(self, sort=""):
+        """
+        Return sorted list of document
+        :param sort: Sort mode, can be "" | "title" | "date"
+        :type sort: str
+        :return: a list of document
+        :rtype: list[Document]
+        """
         if sort == "title":
-            return sorted(self.id2doc.values(), key=lambda x: x.title)
+            return sorted(self.id2doc.values(), key=lambda x: x.get_title())
         if sort == "date":
-            return sorted(self.id2doc.values(), key=lambda x: x.date)
+            return sorted(self.id2doc.values(), key=lambda x: x.get_date())
         else:
             return list(self.id2doc.values())
 
     def get_authors(self, sort=""):
+        """
+        Return sorted list of author
+        :param sort: Sort mode, can be "" | "name" | "document_count"
+        :type sort: str
+        :return: a list of author
+        :rtype: list[Author]
+        """
         if sort == "name":
-            return sorted(self.authors.values(), key=lambda x: x.name)
+            return sorted(self.authors.values(), key=lambda x: x.get_name())
         elif sort == "document_count":
-            return sorted(self.authors.values(), key=lambda x: x.ndoc)
+            return sorted(self.authors.values(), key=lambda x: x.get_document_count())
         else:
             return list(self.authors.values())
 
-    def __len__(self):
-        return self.ndoc
+    def is_same(self, name, document_count):
+        """
+        Return if corpus match with name and document_count
+        :param name: the expected name
+        :type name: str
+        :param document_count: the expected document_count
+        :type document_count: int
+        :return:
+        :rtype: bool
+        """
+        return self.name == name and self.ndoc == document_count
 
     def __str__(self):
         return f"Corpus({self.name}, documents={self.ndoc}, authors={self.naut})"

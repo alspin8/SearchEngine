@@ -1,3 +1,7 @@
+"""
+    The main entry of the code is the notebook "NotebookTD5.ipynb"
+"""
+
 from sys import platform, path
 
 if platform == "win32":
@@ -6,12 +10,13 @@ if platform == "win32":
 from src.model.corpus import Corpus
 
 if __name__ == '__main__':
-    theme = 'football'
+    theme = 'iphone'
+    count = 30
 
     corpus = Corpus()
-    corpus.load(theme, count=200)
+    corpus.load(theme, count)
 
-    if not corpus.is_save:
+    if not corpus.is_saved():
         corpus.save()
 
     documents = corpus.get_documents()
