@@ -39,7 +39,7 @@ class DataQuery:
         posts = []
         to_query = count
         cursor = offset
-        while len(posts) < count:
+        while len(posts) < count and to_query > 0:
             hot_posts = cls.REDDIT.subreddit(theme).hot(limit=to_query, params={"after": cursor})
 
             to_query = 0
@@ -68,16 +68,20 @@ class DataQuery:
         posts = []
         to_query = count
         cursor = int(offset) + 1
-        while len(posts) < count:
+        while len(posts) < count and to_query > 0:
 
             lst = []
             url = f'{cls.ARXIV_API_URL}?search_query=all:{theme}&start={cursor}&max_results={to_query}'
             try:
                 xml = urllib.request.urlopen(url)
-                lst = xmltodict.parse(xml.read().decode('utf-8'))["feed"]["entry"]
+                feed = xmltodict.parse(xml.read().decode('utf-8'))["feed"]
+                if "entry" in feed:
+                    lst = feed["entry"]
+                else:
+                    return posts
             except urllib.error.HTTPError:
                 print(f"Could not query arxiv with {theme} keyword", file=sys.stderr)
-                return []
+                return posts
 
             if type(lst) is not list:
                 lst = [lst]
@@ -98,7 +102,7 @@ class DataQuery:
     @classmethod
     def all(cls, theme, count, r_off="", a_off=0):
         """
-        Fetch <count> documents shared between reddit and arxiv
+        Fetch <count> documents shared between reddit and arxiv (compensation if one of the api no longer has a document to provide)
         :param theme: the theme to query
         :type theme: str
         :param count: the amount of document to query
@@ -113,10 +117,18 @@ class DataQuery:
         assert count % 2 == 0
 
         arxiv_doc = cls.arxiv(theme, count // 2, a_off)
-        if len(arxiv_doc) > 0:
-            reddit_doc = cls.reddit(theme, count // 2, r_off)
-        else:
-            reddit_doc = cls.reddit(theme, count, r_off)
-            print(f"Due to a problem with the api arxiv, the corpus size has been compensated by reddit documents")
+        reddit_doc = cls.reddit(theme, count // 2, r_off)
+
+        if len(arxiv_doc) < count // 2 and len(reddit_doc) == count // 2:
+            print(f"Arxiv document compensated by reddit")
+            reddit_doc += cls.reddit(theme, (count // 2) - len(arxiv_doc), reddit_doc[-1].get_fullname())
+        elif len(reddit_doc) < count // 2 and len(arxiv_doc) == count // 2:
+            print(f"Reddit document compensated by arxiv")
+            arxiv_doc += cls.arxiv(theme, (count // 2) - len(reddit_doc), arxiv_doc[-1].get_api_index())
+        elif len(arxiv_doc) < count // 2 and len(reddit_doc) < count // 2:
+            print(f"Not enough document to fill corpus ({len(reddit_doc) + len(arxiv_doc)}/{count})")
+
+        if len(arxiv_doc) < count // 2 and len(reddit_doc) < count // 2:
+            print(f"Not enough document to fill corpus ({len(reddit_doc) + len(arxiv_doc)}/{count})")
 
         return [*reddit_doc, *arxiv_doc]

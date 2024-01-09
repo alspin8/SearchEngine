@@ -7,17 +7,17 @@ from sys import platform, path
 if platform == "win32":
     path.append("./")
 
-from src.model.corpus import Corpus, clean_text
+from src.model.corpus import Corpus
 
 if __name__ == '__main__':
-    theme = 'football'
-    count = 200
+    theme = 'chess'
+    count = 1000
 
     corpus = Corpus()
     corpus.load(theme, count)
 
-    # if not corpus.is_saved():
-    #     corpus.save()
+    if not corpus.is_saved():
+        corpus.save()
     #
     # documents = corpus.get_documents()
     # authors = corpus.get_authors()
@@ -29,4 +29,5 @@ if __name__ == '__main__':
     # print(*corpus.search("corner"), sep="\n")
     # print(corpus.concorde("corner", 2))
     # print(clean_text(corpus.unique_chain))
-    corpus.stats(10)
+    # corpus.stats(100)
+    # print(corpus.sort_by_score("best opening"))

@@ -1,7 +1,10 @@
+import math
 import os
 import re
+import sys
 
 import numpy as np
+import numpy.linalg
 import pandas as pd
 from scipy.sparse import csr_matrix
 
@@ -115,7 +118,6 @@ class Corpus:
                 df2 = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in data_list])
                 df = pd.concat([df, df2], ignore_index=True)
             else:
-                # df = df.sample(frac=1)
                 df = df.iloc[0:count, :]
 
             df.index.name = "id"
@@ -296,6 +298,25 @@ class Corpus:
             )),
             sep="\n"
         )
+
+    def sort_by_score(self, keywords, max_count=5):
+        """
+        Return <max_count> sorted document by keywords match
+        :param keywords: the string to match with document
+        :type keywords: str
+        :param max_count: the document count to return
+        :type max_count: int
+        :return: the sorted by score list of document
+        :rtype: list[Document]
+        """
+        words = split_string(clean_text(keywords))
+        vector = np.array([1 if k in words else 0 for k in self.vocab.keys()])
+        if np.count_nonzero(vector) < 1:
+            print("None of the key words provide match this corpus vocabulary", file=sys.stderr)
+            return []
+        else:
+            scores = np.array([(np.dot(vector, col.toarray().T) / (numpy.linalg.norm(vector) * numpy.linalg.norm(col.toarray())))[0] for col in self.mat_TFxIDF])
+            return np.array(list(self.id2doc.values()))[np.argsort(scores)[::-1]][0:max_count]
 
     def __str__(self):
         return f"Corpus({self.name}, documents={self.ndoc}, authors={self.naut})"
