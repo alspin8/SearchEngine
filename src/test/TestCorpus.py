@@ -51,6 +51,11 @@ class TestCorpus(TestCase):
 
         os.remove(file_path)
 
+    def test_matrix(self):
+        self.CORPUS.load("football", 200)
+        self.assertEqual(self.CORPUS.mat_TF.shape, (200, len(self.CORPUS.vocab)))
+        self.assertEqual(self.CORPUS.mat_TFxIDF.shape, self.CORPUS.mat_TF.shape)
+
 
 if __name__ == "__main__":
     main()

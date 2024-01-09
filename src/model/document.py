@@ -1,6 +1,6 @@
 from datetime import datetime
 
-clean_string = lambda string: " ".join(string.split()) if len(string) > 0 else "Empty"
+from src.utility.utils import string_preprocessing
 
 
 class Document:
@@ -109,11 +109,11 @@ class Document:
         :rtype: RedditDocument
         """
         return RedditDocument(
-            title=clean_string(post.title),
+            title=string_preprocessing(post.title),
             author=post.author_flair_text if post.author_flair_text else "Unknown",
             date=datetime.utcfromtimestamp(post.created_utc),
             url=post.url,
-            text=clean_string(post.selftext),
+            text=string_preprocessing(post.selftext),
             comment_count=len(post.comments),
             fullname=post.name
         )
@@ -126,11 +126,11 @@ class Document:
         :return: a document
         :rtype: ArxivDocument
         """
-        title = clean_string(post["title"]) if "title" in post else "Empty"
+        title = string_preprocessing(post["title"]) if "title" in post else "Empty"
         author = post["author"][0]["name"] if type(post["author"]) is list else post["author"]["name"]
         date = datetime.strptime(post["published"], "%Y-%m-%dT%H:%M:%SZ") if "published" in post else None
         url = post["id"] if "id" in post else "Empty"
-        text = clean_string(post["summary"] or "None") if "summary" in post else "Empty"
+        text = string_preprocessing(post["summary"] or "None") if "summary" in post else "Empty"
         co_authors = list(map(lambda aut: aut["name"], post["author"][1:])) if type(post["author"]) is list else []
         api_index = post["api_index"] if "api_index" in post else 0
         return ArxivDocument(title=title, author=author, date=date, url=url, text=text, co_authors=co_authors,

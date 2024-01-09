@@ -1,20 +1,15 @@
 import os
 import re
 
+import numpy as np
 import pandas as pd
+from scipy.sparse import csr_matrix
+
 from src.utility import config
 from src.utility.data_query import DataQuery
 from src.model.author import Author
 from src.model.document import Document, RedditDocument, ArxivDocument
-from src.utility.utils import singleton
-
-author_to_list = lambda x: x.strip("[]").replace("'", "").split(", ") if x != '[]' else []
-
-
-def clean_text(string):
-    pattern = r'[^a-zA-Z\s]'
-    res = re.sub(pattern, '', string.lower())
-    return res
+from src.utility.utils import singleton, clean_text, split_string, stringify_list_to_list
 
 
 @singleton
@@ -38,6 +33,16 @@ class Corpus:
         the save status of the corpus
     loaded : bool
         the load status of the corpus
+    file_path : Path
+        the path to the saved corpus
+    unique_chain : str
+        the string that contain all document text
+    vocab : dict[str, dict[str, int]]
+        the dict that contain all unique word of the corpus as key and some his freq, document_freq and id as value
+    mat_TF : csr_matrix
+        the term frequency matrix with word as column and document as row, populated with word occurrence
+    mat_TFxIDF : csr_matrix
+        the term frequency-inverse document frequency matrix with word as column and document as row, populated with word occurrence
 
     Methods
     -------
@@ -61,18 +66,27 @@ class Corpus:
         Return sorted list of author
     is_same(name, document_count)
         Return if corpus match with name and document_count
+    concorde(keyword, context_size)
+        Return a dataframe with three column, left context of len <context_size>, the keyword, right context of len <context_size>
+    search(keyword)
+        Same as concorde, but return a list of string with 2 word of context
+    stats(top_count)
+        Print some statistic about the corpus. The total number of unique word and the <top_count> most frequent words
     """
 
     def __init__(self):
         self.name = None
-        self.id2doc = dict()
-        self.authors = dict()
+        self.id2doc = {}
+        self.authors = {}
         self.ndoc = 0
         self.naut = 0
         self.saved = False
         self.loaded = False
         self.file_path = None
         self.unique_chain = ""
+        self.vocab = {}
+        self.mat_TF = None
+        self.mat_TFxIDF = None
 
     def load(self, name, count):
         """
@@ -91,7 +105,7 @@ class Corpus:
             self.id2doc = dict([(i, doc) for i, doc in enumerate(data_list)])
         else:
             self.saved = True
-            df = pd.read_csv(self.file_path, sep=config.CSV_SEP, index_col=0, converters={"co_authors": author_to_list})
+            df = pd.read_csv(self.file_path, sep=config.CSV_SEP, index_col=0, converters={"co_authors": stringify_list_to_list})
             if len(df) < count:
                 self.saved = False
                 r_off = df.loc[df.type == "reddit", :].tail(1).iloc[0].fullname
@@ -101,7 +115,7 @@ class Corpus:
                 df2 = pd.DataFrame([data.__dict__ | dict(type=data.get_type()) for data in data_list])
                 df = pd.concat([df, df2], ignore_index=True)
             else:
-                df = df.sample(frac=1)
+                # df = df.sample(frac=1)
                 df = df.iloc[0:count, :]
 
             df.index.name = "id"
@@ -115,6 +129,34 @@ class Corpus:
         self.naut = len(self.authors)
 
         self.unique_chain = " ".join(map(Document.get_text, self.id2doc.values()))
+
+        # Creation of term frequency matrix and vocabulary dictionary
+        indptr = [0]
+        indices = []
+        data = []
+
+        document_len = []  # for tf-idf computation
+
+        for document in self.id2doc.values():
+            split_words = split_string(clean_text(document.get_text()))
+            document_len.append(len(split_words))
+            for word in split_words:
+                index = self.vocab.setdefault(word, {"id": len(self.vocab)})["id"]
+                indices.append(index)
+                data.append(1)
+            indptr.append(len(indices))
+
+        self.mat_TF = csr_matrix((data, indices, indptr), dtype=int)
+
+        # Total occurrence of words in corpus computation
+        for k, v in self.vocab.items():
+            self.vocab[k]["freq"] = self.mat_TF.getcol(v["id"]).sum()
+            self.vocab[k]["document_freq"] = np.count_nonzero(self.mat_TF.getcol(v["id"]).toarray())
+
+        # Creation of term frequency-inverse document frequency matrix
+        idf = np.log(self.mat_TF.shape[0] / np.array([v["document_freq"] for v in self.vocab.values()]))
+        tf_div = np.array([np.array([length for _ in range(len(idf))]) for length in document_len])
+        self.mat_TFxIDF = (self.mat_TF / tf_div).multiply(idf).tocsr()
 
         self.loaded = True
 
@@ -209,6 +251,15 @@ class Corpus:
         return self.name == name and self.ndoc == document_count
 
     def concorde(self, keyword, context_size):
+        """
+        Return a dataframe with three column, left context of len <context_size>, the keyword, right context of len <context_size>
+        :param keyword: the keyword to match
+        :type keyword: str
+        :param context_size: the size (in word) of context
+        :type context_size: int
+        :return: the dataframe
+        :rtype DataFrame
+        """
         regex = r"(\w+)\W+" * context_size + f"({keyword})" + r"\W+(\w+)" * context_size
         matches = re.findall(regex, self.unique_chain.lower())
 
@@ -217,22 +268,34 @@ class Corpus:
         return pd.DataFrame(list_of_dict)
 
     def search(self, keyword):
+        """
+        Same as concorde, but return a list of string with 2 word of context
+        :param keyword: the keyword to match
+        :type keyword: str
+        :return: a list of string with 2 word context and the keyword in the middle
+        :rtype: list[str]
+        """
         return self.concorde(keyword, 2)[['left', 'pattern', 'right']].apply(lambda row: ' '.join(row.values.astype(str)), axis=1).tolist()
 
-    def stats(self, word_freq_count):
-        filter_pattern = r'\s+'
-
-        words = re.split(filter_pattern, clean_text(self.unique_chain))
-
-        df = pd.DataFrame(words).value_counts().to_frame("freq").reset_index(names=["word"])
-        df.insert(2, "document_freq", 0)
-
-        for document in self.id2doc.values():
-            unique_words = set(re.split(filter_pattern, clean_text(document.get_text())))
-            df.loc[df.word.isin(list(unique_words)), "document_freq"] += 1
-
-        print(f"Number of words: {len(df)}\n")
-        print(df.loc[0:word_freq_count, "word"])
+    def stats(self, top_count):
+        """
+        Print some statistic about the corpus. The total number of unique word and the <top_count> most frequent words
+        :param top_count: the number of word to print
+        :type top_count: int
+        :return: None
+        """
+        print(f"Number of words: {len(self.vocab)}\n")
+        print(
+            *list(map(
+                lambda tp: tp[0],
+                sorted(
+                    self.vocab.items(),
+                    key=lambda row: row[1]["freq"],
+                    reverse=True
+                )[0:top_count]
+            )),
+            sep="\n"
+        )
 
     def __str__(self):
         return f"Corpus({self.name}, documents={self.ndoc}, authors={self.naut})"
