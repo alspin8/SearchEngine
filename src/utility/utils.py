@@ -38,7 +38,7 @@ def clean_text(string):
     :return: process string
     :rtype: str
     """
-    return re.sub(r'[^a-zA-Z\s]', '', string).lower().strip()
+    return re.sub(r'\b\w{21,}\b', '', re.sub(r'[^a-zA-Z\s]', '', string).strip()).strip().lower()
 
 
 def stringify_list_to_list(x):
