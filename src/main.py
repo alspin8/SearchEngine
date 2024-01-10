@@ -1,5 +1,5 @@
 """
-    The main entry of the code is the notebook "NotebookTD7.ipynb"
+    This is the main entry, just run the script to open the interface
 """
 
 from sys import platform, path
@@ -7,27 +7,7 @@ from sys import platform, path
 if platform == "win32":
     path.append("./")
 
-from src.model.corpus import Corpus
+from src.ui.application import application
 
 if __name__ == '__main__':
-    theme = 'chess'
-    count = 1000
-
-    corpus = Corpus()
-    corpus.load(theme, count)
-
-    if not corpus.is_saved():
-        corpus.save()
-    #
-    # documents = corpus.get_documents()
-    # authors = corpus.get_authors()
-    #
-    print(corpus, end="\n\n")
-    # print(*documents, sep="\n")
-    # print("")
-    # print(*authors, sep="\n")
-    # print(*corpus.search("corner"), sep="\n")
-    # print(corpus.concorde("corner", 2))
-    # print(clean_text(corpus.unique_chain))
-    # corpus.stats(100)
-    # print(corpus.sort_by_score("best opening"))
+    application.run(debug=True)

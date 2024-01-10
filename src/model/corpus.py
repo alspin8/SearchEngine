@@ -14,7 +14,7 @@ from src.model.document import Document, RedditDocument, ArxivDocument
 from src.utility.utils import singleton, clean_text, split_string, stringify_list_to_list
 
 
-@singleton
+# @singleton
 class Corpus:
     """
     A class used to represent a Corpus
@@ -76,30 +76,26 @@ class Corpus:
         Print some statistic about the corpus. The total number of unique word and the <top_count> most frequent words
     """
 
-    def __init__(self):
-        self.name = None
+    def __init__(self, name):
+        self.name = name
         self.id2doc = {}
         self.authors = {}
         self.ndoc = 0
         self.naut = 0
         self.saved = False
         self.loaded = False
-        self.file_path = None
+        self.file_path = config.DATA_FOLDER.joinpath(f"{name}.csv")
         self.unique_chain = ""
         self.vocab = {}
         self.mat_TF = None
         self.mat_TFxIDF = None
 
-    def load(self, name, count):
+    def load(self, count):
         """
         Load corpus with data depend on name and count
-        :param name: The keyword to search
-        :type name: str
         :param count: The amount of document to retrieve
         :type count: int
         """
-        self.name = name
-        self.file_path = config.DATA_FOLDER.joinpath(f"{name}.csv")
 
         if not os.path.isfile(self.file_path):
             self.saved = False
