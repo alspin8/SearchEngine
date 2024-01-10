@@ -11,7 +11,7 @@ from src.utility import config
 from src.utility.data_query import DataQuery
 from src.model.author import Author
 from src.model.document import Document, RedditDocument, ArxivDocument
-from src.utility.utils import singleton, clean_text, split_string, stringify_list_to_list
+from src.utility.utils import clean_text, split_string, stringify_list_to_list
 
 
 # @singleton

@@ -12,6 +12,3 @@ from src.model.corpus import Corpus
 
 if __name__ == '__main__':
     application.run(debug=True)
-    # c = Corpus("python")
-    # c.load(500)
-    # c.save()
